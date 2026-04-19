@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Local RAG Knowledge Base</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">LOCAL RAG WORKBENCH</p>
+          <h1>本地知识库前端</h1>
+          <p class="hero-text">
+            上传 PDF 或文档，自动完成 chunk、embedding、Chroma
+            入库，并直接在页面里完成检索问答。
+          </p>
+          <div class="hero-actions">
+            <button id="refresh-status" class="ghost-button" type="button">
+              刷新状态
+            </button>
+            <span id="status-pill" class="status-pill">检测中</span>
+          </div>
+        </div>
+        <div class="hero-panel">
+          <div class="hero-card">
+            <span class="hero-card-label">当前索引</span>
+            <strong id="index-state">未检测</strong>
+            <span id="manifest-summary">等待服务返回</span>
+          </div>
+          <div class="hero-card hero-card-accent">
+            <span class="hero-card-label">生成模式</span>
+            <strong>Query -> Retrieve -> Answer</strong>
+            <span
+              >如已配置 Ollama，则返回本地 LLM 回答；否则返回检索摘要。</span
+            >
+          </div>
+        </div>
+      </header>
+
+      <main class="workspace-grid">
+        <section class="panel panel-upload">
+          <div class="panel-heading">
+            <h2>上传文档</h2>
+            <p>支持 PDF、Markdown、TXT、DOCX。上传后会直接覆盖当前索引。</p>
+          </div>
+          <form id="upload-form" class="stack-form">
+            <label class="field">
+              <span>来源标签</span>
+              <input
+                id="source-label"
+                name="source_label"
+                type="text"
+                value="uploaded://web"
+              />
+            </label>
+            <label class="file-drop" for="files-input">
+              <input id="files-input" name="files" type="file" multiple />
+              <span class="file-drop-title">拖入文件或点击选择</span>
+              <span id="file-list" class="file-drop-subtitle"
+                >尚未选择文件</span
+              >
+            </label>
+            <button id="upload-button" class="primary-button" type="submit">
+              上传并入库
+            </button>
+          </form>
+          <pre id="upload-result" class="result-box muted-box">等待上传</pre>
+        </section>
+
+        <section class="panel panel-query">
+          <div class="panel-heading">
+            <h2>知识问答</h2>
+            <p>基于当前 Chroma 索引检索相关片段，并调用本地模型生成答案。</p>
+          </div>
+          <form id="query-form" class="stack-form">
+            <label class="field">
+              <span>问题</span>
+              <textarea
+                id="question-input"
+                name="question"
+                rows="5"
+                placeholder="例如：财务审批流程需要哪些步骤？"
+              ></textarea>
+            </label>
+            <label class="field narrow-field">
+              <span>Top K</span>
+              <input
+                id="top-k-input"
+                name="top_k"
+                type="number"
+                min="1"
+                max="20"
+                value="4"
+              />
+            </label>
+            <button id="query-button" class="primary-button" type="submit">
+              开始检索问答
+            </button>
+          </form>
+          <div class="answer-block">
+            <h3>回答</h3>
+            <div id="answer-output" class="answer-output muted-box">
+              等待提问
+            </div>
+          </div>
+          <div class="sources-block">
+            <div class="sources-header">
+              <h3>命中片段</h3>
+              <span id="generator-flag" class="flag-chip">未调用</span>
+            </div>
+            <div id="sources-output" class="sources-list muted-box">
+              暂无结果
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/assets/app.js"></script>
+  </body>
+</html>

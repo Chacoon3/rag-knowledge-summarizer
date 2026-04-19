@@ -1,0 +1,15 @@
+chromadb>=0.5.23
+fastapi>=0.115
+numpy>=2.1
+pydantic>=2.9
+pydantic-settings>=2.6
+pypdf>=5.1
+python-multipart>=0.0.12
+python-docx>=1.1
+requests>=2.32
+sentence-transformers>=3.3
+typer>=0.12
+uvicorn[standard]>=0.32
+
+[dev]
+pytest>=8.3

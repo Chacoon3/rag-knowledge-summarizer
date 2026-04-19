@@ -1,0 +1,162 @@
+# 本地 RAG 知识库
+
+这是一个完全本地运行的 RAG 示例项目，包含文档入库、切片、向量检索、可选的 Ollama 回答生成，以及一套 CLI、HTTP API 和内置 Web 前端。
+
+## 设计目标
+
+- 文档和索引全部保存在本地目录，不依赖云端服务。
+- 默认适配中文语料，支持 `.txt`、`.md`、`.pdf`、`.docx`。
+- 使用本地 embedding 模型构建向量索引，索引结果持久化到 `storage/`。
+- 使用 Chroma 作为本地向量数据库，索引结果持久化到 `storage/chroma/`。
+- 如果本机已经安装并启动 Ollama，可以直接接入本地大模型生成答案。
+- 如果 Ollama 不可用，系统会退化成“检索结果摘要”模式，仍然能返回最相关片段。
+
+## 架构说明
+
+1. 文档加载层：递归读取 `data/docs/` 下的文本、Markdown、PDF、Word 文件。
+2. 文本切片层：按字符窗口和语义边界切片，并保留重叠区间，减少上下文断裂。
+3. 向量化层：默认使用 `BAAI/bge-small-zh-v1.5` 生成本地 embedding。
+4. 存储层：将切片和向量写入本地 Chroma，索引信息写入 `storage/manifest.json`。
+5. 检索层：基于余弦相似度召回最相关片段。
+6. 生成层：可选调用本机 Ollama，把检索到的片段拼入 prompt 生成最终答案。
+
+## 目录结构
+
+```text
+rag-demo/
+├─ data/docs/             # 放知识库原始文档
+├─ storage/               # 本地索引输出目录
+├─ src/local_rag/         # 核心实现
+├─ tests/                 # 单元测试
+├─ main.py                # CLI 启动入口
+└─ pyproject.toml         # 依赖与项目配置
+```
+
+## 快速开始
+
+### 1. 安装依赖
+
+建议在当前虚拟环境中安装：
+
+```bash
+python -m pip install -e .
+python -m pip install pytest
+```
+
+如果你只想直接运行，也可以单独安装依赖：
+
+```bash
+python -m pip install fastapi "uvicorn[standard]" numpy pydantic pydantic-settings pypdf python-docx requests sentence-transformers typer pytest
+```
+
+### 2. 准备文档
+
+将你的知识文档放入 `data/docs/`，项目已自带一个示例 Markdown 文档可用于试跑。
+
+### 3. 建立索引
+
+```bash
+python main.py ingest
+```
+
+如果文档目录不在默认路径，可指定：
+
+```bash
+python main.py ingest --source-dir D:/kb/docs
+```
+
+### 4. 进行问答
+
+```bash
+python main.py query "这个知识库支持哪些文件类型？"
+```
+
+### 5. 启动 HTTP API
+
+```bash
+python main.py serve --host 127.0.0.1 --port 8000
+```
+
+启动后可以直接打开 `http://127.0.0.1:8000/` 使用前端页面，页面支持：
+
+- 上传 PDF / Markdown / Word / TXT 文档并触发入库
+- 查看当前知识库状态
+- 输入问题并展示回答与命中片段
+
+接口说明：
+
+- `GET /health`：检查服务状态和索引是否存在。
+- `GET /manifest`：查看当前索引元数据。
+- `POST /ingest`：触发重新入库。
+- `POST /upload`：直接上传 PDF / Markdown / Word / TXT 文件并入库。
+- `POST /query`：提交问题进行检索问答。
+
+示例请求：
+
+```bash
+curl -X POST http://127.0.0.1:8000/query \
+  -H "Content-Type: application/json" \
+  -d '{"question":"这个系统如何入库？","top_k":3}'
+```
+
+上传文件示例：
+
+```bash
+curl -X POST http://127.0.0.1:8000/upload \
+  -F "files=@data/docs/example.md" \
+  -F "files=@D:/kb/manual.pdf" \
+  -F "source_label=uploaded://demo"
+```
+
+## 配置项
+
+可以复制 `.env.example` 为 `.env` 后按需修改：
+
+- `RAG_DATA_DIR`：知识文档目录。
+- `RAG_STORAGE_DIR`：本地索引目录。
+- `RAG_CHROMA_COLLECTION_NAME`：Chroma collection 名称。
+- `RAG_EMBEDDING_MODEL`：本地 embedding 模型名。
+- `RAG_CHUNK_SIZE`：切片大小。
+- `RAG_CHUNK_OVERLAP`：切片重叠长度。
+- `RAG_TOP_K`：默认召回数量。
+- `RAG_SIMILARITY_THRESHOLD`：相似度阈值。
+- `RAG_ENABLE_GENERATION`：是否启用本地 LLM 生成。
+- `RAG_OLLAMA_BASE_URL`：Ollama 服务地址。
+- `RAG_OLLAMA_MODEL`：Ollama 模型名。
+
+## Ollama 接入
+
+如果本机已安装 Ollama，可以先拉取模型：
+
+```bash
+ollama pull qwen2.5:7b-instruct
+ollama serve
+```
+
+如果没有启用 Ollama，系统仍然可以工作，只是回答会退化成“最相关片段摘要”。
+
+## 测试
+
+```bash
+pytest
+```
+
+测试不会下载 embedding 模型；检索测试使用假的向量后端来验证流程正确性。
+
+## VS Code 本地调试
+
+项目已经包含工作区级 VS Code 调试配置，适合本地开发和测试：
+
+- `Local RAG: API Server`：调试 Web/API 服务，启动后访问 `http://127.0.0.1:8000/`
+- `Local RAG: Ingest Default Docs`：调试默认文档目录入库
+- `Local RAG: Query Sample`：调试一条示例问答
+- `Pytest: All Tests`：调试整个测试集
+- `Pytest: Current File`：调试当前测试文件
+
+同时 `.vscode/settings.json` 已启用 pytest，并将解释器固定到当前项目虚拟环境：
+
+```text
+.venv/Scripts/python.exe
+```
+
+如果你在 VS Code 中打开 `Testing` 面板，也可以直接使用内置的 `Debug Test` 按钮调试单个测试。
