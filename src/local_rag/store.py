@@ -5,7 +5,13 @@ from pathlib import Path
 import chromadb
 import numpy as np
 
-from local_rag.models import DocumentChunk, KnowledgeBaseManifest, SearchResult
+from local_rag.models import (
+    ChunkPage,
+    ChunkPageItem,
+    DocumentChunk,
+    KnowledgeBaseManifest,
+    SearchResult,
+)
 
 
 class KnowledgeBaseNotFoundError(FileNotFoundError):
@@ -98,6 +104,48 @@ class LocalVectorStore:
             results.append(SearchResult(chunk=chunk, score=score))
 
         return results
+
+    def list_chunks(self, page: int = 1, page_size: int = 10) -> ChunkPage:
+        if page <= 0:
+            raise ValueError("page 必须大于 0")
+        if page_size <= 0:
+            raise ValueError("page_size 必须大于 0")
+        if not self.is_ready():
+            raise KnowledgeBaseNotFoundError("本地知识库尚未建立，请先执行 ingest。")
+
+        collection = self.client.get_collection(self.collection_name)
+        total = collection.count()
+        offset = (page - 1) * page_size
+        payload = collection.get(
+            limit=page_size,
+            offset=offset,
+            include=["documents", "metadatas"],
+        )
+
+        ids = payload.get("ids", [])
+        documents = payload.get("documents", [])
+        metadatas = payload.get("metadatas", [])
+        items: list[ChunkPageItem] = []
+        for chunk_id, content, metadata in zip(ids, documents, metadatas):
+            metadata = dict(metadata or {})
+            chunk = DocumentChunk(
+                chunk_id=chunk_id,
+                source_path=str(metadata.get("source_path", "unknown")),
+                content=content or "",
+                index=int(metadata.get("index", 0)),
+                char_count=int(metadata.get("char_count", len(content or ""))),
+                metadata=metadata,
+            )
+            items.append(ChunkPageItem(chunk=chunk))
+
+        total_pages = max((total + page_size - 1) // page_size, 1)
+        return ChunkPage(
+            items=items,
+            page=page,
+            page_size=page_size,
+            total=total,
+            total_pages=total_pages,
+        )
 
     def is_ready(self) -> bool:
         if not self.manifest_path.exists():

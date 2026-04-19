@@ -115,6 +115,43 @@
             </div>
           </div>
         </section>
+
+        <section class="panel panel-library">
+          <div class="panel-heading panel-heading-inline">
+            <div>
+              <h2>向量数据库内容</h2>
+              <p>分页查看当前 Chroma 中已存储的全部切片内容与元数据。</p>
+            </div>
+            <div class="pagination-meta">
+              <span id="chunks-summary" class="flag-chip">暂无数据</span>
+            </div>
+          </div>
+          <div class="library-toolbar">
+            <label class="field narrow-field">
+              <span>每页数量</span>
+              <input
+                id="page-size-input"
+                type="number"
+                min="1"
+                max="50"
+                value="5"
+              />
+            </label>
+            <div class="pager-actions">
+              <button id="prev-page-button" class="ghost-button" type="button">
+                上一页
+              </button>
+              <span id="page-indicator" class="status-pill">第 1 页</span>
+              <button id="next-page-button" class="ghost-button" type="button">
+                下一页
+              </button>
+              <button id="refresh-chunks" class="ghost-button" type="button">
+                刷新列表
+              </button>
+            </div>
+          </div>
+          <div id="chunks-output" class="library-list muted-box">等待加载</div>
+        </section>
       </main>
     </div>
 

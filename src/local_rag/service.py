@@ -10,7 +10,12 @@ from local_rag.chunking import chunk_document
 from local_rag.embeddings import EmbeddingBackend
 from local_rag.generation import OllamaGenerator, build_fallback_answer
 from local_rag.loaders import load_documents, load_documents_from_paths
-from local_rag.models import IngestStats, KnowledgeBaseManifest, QueryResponse
+from local_rag.models import (
+    ChunkPage,
+    IngestStats,
+    KnowledgeBaseManifest,
+    QueryResponse,
+)
 from local_rag.retriever import Retriever
 from local_rag.settings import Settings
 from local_rag.store import LocalVectorStore
@@ -95,6 +100,9 @@ class RagService:
 
     def manifest(self) -> KnowledgeBaseManifest:
         return self.store.load_manifest()
+
+    def list_chunks(self, page: int = 1, page_size: int = 10) -> ChunkPage:
+        return self.store.list_chunks(page=page, page_size=page_size)
 
     def query(self, question: str, top_k: int | None = None) -> QueryResponse:
         retriever = Retriever(

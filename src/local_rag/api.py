@@ -10,7 +10,12 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from local_rag import __version__
-from local_rag.models import IngestStats, KnowledgeBaseManifest, QueryResponse
+from local_rag.models import (
+    ChunkPage,
+    IngestStats,
+    KnowledgeBaseManifest,
+    QueryResponse,
+)
 from local_rag.service import RagService
 from local_rag.settings import Settings
 from local_rag.store import KnowledgeBaseNotFoundError
@@ -50,6 +55,18 @@ def create_app(
             return service.manifest()
         except KnowledgeBaseNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/chunks", response_model=ChunkPage)
+    def get_chunks(
+        page: int = 1,
+        page_size: int = 10,
+    ) -> ChunkPage:
+        try:
+            return service.list_chunks(page=page, page_size=page_size)
+        except KnowledgeBaseNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.post("/ingest", response_model=IngestStats)
     def ingest(

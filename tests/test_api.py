@@ -75,3 +75,49 @@ def test_upload_endpoint_ingests_documents(tmp_path) -> None:
     assert query_response.status_code == 200
     query_payload = query_response.json()
     assert query_payload["matches"][0]["chunk"]["source_path"] == "001-guide.md"
+
+
+def test_chunks_endpoint_supports_pagination(tmp_path) -> None:
+    settings = Settings(
+        data_dir=tmp_path / "docs",
+        storage_dir=tmp_path / "storage",
+        enable_generation=False,
+        chroma_collection_name="test-chunks",
+        chunk_size=8,
+        chunk_overlap=2,
+    )
+    service = RagService(settings=settings, embedder=FakeEmbedder(), generator=None)
+    client = TestClient(create_app(settings=settings, service=service))
+
+    response = client.post(
+        "/upload",
+        files=[
+            (
+                "files",
+                (
+                    "guide.md",
+                    "财务审批需要部门负责人确认。部署发布前需要执行回归测试。".encode(
+                        "utf-8"
+                    ),
+                    "text/markdown",
+                ),
+            )
+        ],
+    )
+
+    assert response.status_code == 200
+
+    page_one = client.get("/chunks", params={"page": 1, "page_size": 2})
+    assert page_one.status_code == 200
+    payload_one = page_one.json()
+    assert payload_one["page"] == 1
+    assert payload_one["page_size"] == 2
+    assert payload_one["total"] >= 3
+    assert payload_one["total_pages"] >= 2
+    assert len(payload_one["items"]) == 2
+
+    page_two = client.get("/chunks", params={"page": 2, "page_size": 2})
+    assert page_two.status_code == 200
+    payload_two = page_two.json()
+    assert payload_two["page"] == 2
+    assert len(payload_two["items"]) >= 1

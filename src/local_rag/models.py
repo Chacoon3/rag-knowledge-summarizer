@@ -44,3 +44,15 @@ class QueryResponse(BaseModel):
     answer: str
     used_generator: bool
     matches: list[SearchResult]
+
+
+class ChunkPageItem(BaseModel):
+    chunk: DocumentChunk
+
+
+class ChunkPage(BaseModel):
+    items: list[ChunkPageItem]
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
