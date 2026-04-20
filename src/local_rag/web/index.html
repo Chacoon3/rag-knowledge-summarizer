@@ -8,33 +8,71 @@
   </head>
   <body>
     <div class="page-shell">
+      <header class="topbar">
+        <div class="brand-block">
+          <span class="brand-mark">LR</span>
+          <div>
+            <p class="eyebrow">LOCAL RAG KNOWLEDGE BASE</p>
+            <strong class="brand-title">Local RAG Knowledge Base</strong>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <span class="topbar-note">Vercel-style local AI workbench</span>
+          <span id="status-pill" class="status-pill">检测中</span>
+        </div>
+      </header>
+
       <header class="hero">
         <div class="hero-copy">
-          <p class="eyebrow">LOCAL RAG WORKBENCH</p>
-          <h1>本地知识库前端</h1>
-          <p class="hero-text">
-            上传 PDF 或文档，自动完成 chunk、embedding、Chroma
-            入库，并直接在页面里完成检索问答。
-          </p>
+          <div class="hero-intro">
+            <p class="eyebrow">UPLOAD. RETRIEVE. ANSWER.</p>
+            <h1>本地知识库前端</h1>
+            <p class="hero-text">
+              为本地 RAG 工作流提供一个统一的控制台。上传 PDF、Markdown、TXT 和
+              DOCX，自动完成切片、向量化、Chroma 入库，再直接进入检索问答。
+            </p>
+          </div>
           <div class="hero-actions">
-            <button id="refresh-status" class="ghost-button" type="button">
+            <button id="refresh-status" class="primary-button" type="button">
               刷新状态
             </button>
-            <span id="status-pill" class="status-pill">检测中</span>
+            <div class="hero-command">/upload -> /query -> /chunks</div>
+          </div>
+          <div class="hero-band">
+            <article class="hero-band-card">
+              <span class="hero-card-label">INGEST</span>
+              <strong>文档自动入库</strong>
+              <span>保持上传、切片和 embedding 流程在一个界面完成。</span>
+            </article>
+            <article class="hero-band-card">
+              <span class="hero-card-label">RETRIEVE</span>
+              <strong>检索结果可追踪</strong>
+              <span>命中片段、score、分页切片内容全部可视化。</span>
+            </article>
+            <article class="hero-band-card">
+              <span class="hero-card-label">GENERATE</span>
+              <strong>多 Provider 切换</strong>
+              <span
+                >local_transformers、Ollama、Gemini、OpenRouter 统一管理。</span
+              >
+            </article>
           </div>
         </div>
         <div class="hero-panel">
-          <div class="hero-card">
+          <div class="hero-card hero-card-primary">
             <span class="hero-card-label">当前索引</span>
             <strong id="index-state">未检测</strong>
             <span id="manifest-summary">等待服务返回</span>
           </div>
-          <div class="hero-card hero-card-accent">
-            <span class="hero-card-label">生成模式</span>
+          <div class="hero-card metric-card">
+            <span class="hero-card-label">系统视角</span>
             <strong>Query -> Retrieve -> Answer</strong>
-            <span
-              >如已配置 Ollama，则返回本地 LLM 回答；否则返回检索摘要。</span
-            >
+            <span>页面直接衔接知识导入、检索问答、向量内容管理。</span>
+          </div>
+          <div class="hero-card metric-card metric-card-accent">
+            <span class="hero-card-label">运行方式</span>
+            <strong>Local-first AI Workspace</strong>
+            <span>优先本地推理，远端 provider 作为补充能力接入。</span>
           </div>
         </div>
       </header>
@@ -43,7 +81,10 @@
         <section class="panel panel-upload">
           <div class="panel-heading">
             <h2>上传文档</h2>
-            <p>支持 PDF、Markdown、TXT、DOCX。上传后会直接覆盖当前索引。</p>
+            <p>
+              支持
+              PDF、Markdown、TXT、DOCX。上传后会增量写入当前知识库，适合持续扩充本地数据集。
+            </p>
           </div>
           <form id="upload-form" class="stack-form">
             <label class="field">
@@ -62,6 +103,10 @@
                 >尚未选择文件</span
               >
             </label>
+            <div class="panel-tip">
+              推荐按业务域拆分来源标签，例如 finance://policies 或
+              hr://playbooks。
+            </div>
             <button id="upload-button" class="primary-button" type="submit">
               上传并入库
             </button>
