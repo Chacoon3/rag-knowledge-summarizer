@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     chunk_overlap: int = 80
     top_k: int = 4
     similarity_threshold: float = 0.15
+    retrieval_mode: str = "hybrid"
+    hybrid_vector_weight: float = 0.65
+    hybrid_keyword_weight: float = 0.35
+    hybrid_candidate_multiplier: int = 4
     enable_generation: bool = True
     generation_provider: str = "auto"
     gemini_api_key: str = ""

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+from collections import Counter
+import math
 from pathlib import Path
+import re
 
 import chromadb
 import numpy as np
@@ -18,6 +21,9 @@ from local_rag.models import (
 
 class KnowledgeBaseNotFoundError(FileNotFoundError):
     pass
+
+
+TOKEN_PATTERN = re.compile(r"[a-z0-9_]+|[\u4e00-\u9fff]", re.IGNORECASE)
 
 
 class LocalVectorStore:
@@ -110,15 +116,7 @@ class LocalVectorStore:
             if score < threshold:
                 continue
 
-            metadata = dict(metadata or {})
-            chunk = DocumentChunk(
-                chunk_id=chunk_id,
-                source_path=str(metadata.get("source_path", "unknown")),
-                content=content or "",
-                index=int(metadata.get("index", 0)),
-                char_count=int(metadata.get("char_count", len(content or ""))),
-                metadata=metadata,
-            )
+            chunk = self._build_chunk(chunk_id, content, metadata)
             results.append(SearchResult(chunk=chunk, score=score))
 
         return results
@@ -130,6 +128,54 @@ class LocalVectorStore:
         threshold: float = 0.0,
     ) -> list[SearchResult]:
         return await asyncio.to_thread(self.search, query_embedding, top_k, threshold)
+
+    def keyword_search(
+        self,
+        query_text: str,
+        top_k: int,
+        threshold: float = 0.0,
+    ) -> list[SearchResult]:
+        if not self.is_ready():
+            raise KnowledgeBaseNotFoundError("本地知识库尚未建立，请先执行 ingest。")
+
+        query_tokens = self._tokenize(query_text)
+        if not query_tokens:
+            return []
+
+        payload = self.client.get_collection(self.collection_name).get(
+            include=["documents", "metadatas"]
+        )
+        ids = payload.get("ids", [])
+        documents = payload.get("documents", [])
+        metadatas = payload.get("metadatas", [])
+
+        results: list[SearchResult] = []
+        for chunk_id, content, metadata in zip(ids, documents, metadatas):
+            score = self._keyword_score(query_tokens, content or "")
+            if score <= 0 or score < threshold:
+                continue
+            results.append(
+                SearchResult(
+                    chunk=self._build_chunk(chunk_id, content, metadata),
+                    score=score,
+                )
+            )
+
+        results.sort(key=lambda item: item.score, reverse=True)
+        return results[:top_k]
+
+    async def keyword_search_async(
+        self,
+        query_text: str,
+        top_k: int,
+        threshold: float = 0.0,
+    ) -> list[SearchResult]:
+        return await asyncio.to_thread(
+            self.keyword_search,
+            query_text,
+            top_k,
+            threshold,
+        )
 
     def list_chunks(self, page: int = 1, page_size: int = 10) -> ChunkPage:
         if page <= 0:
@@ -155,15 +201,7 @@ class LocalVectorStore:
         metadatas = payload.get("metadatas", [])
         items: list[ChunkPageItem] = []
         for chunk_id, content, metadata in zip(ids, documents, metadatas):
-            metadata = dict(metadata or {})
-            chunk = DocumentChunk(
-                chunk_id=chunk_id,
-                source_path=str(metadata.get("source_path", "unknown")),
-                content=content or "",
-                index=int(metadata.get("index", 0)),
-                char_count=int(metadata.get("char_count", len(content or ""))),
-                metadata=metadata,
-            )
+            chunk = self._build_chunk(chunk_id, content, metadata)
             items.append(ChunkPageItem(chunk=chunk))
 
         return ChunkPage(
@@ -244,6 +282,49 @@ class LocalVectorStore:
             if isinstance(value, (str, int, float, bool)):
                 metadata[key] = value
         return metadata
+
+    @staticmethod
+    def _build_chunk(
+        chunk_id: str,
+        content: str | None,
+        metadata,
+    ) -> DocumentChunk:
+        metadata = dict(metadata or {})
+        return DocumentChunk(
+            chunk_id=chunk_id,
+            source_path=str(metadata.get("source_path", "unknown")),
+            content=content or "",
+            index=int(metadata.get("index", 0)),
+            char_count=int(metadata.get("char_count", len(content or ""))),
+            metadata=metadata,
+        )
+
+    @staticmethod
+    def _tokenize(text: str) -> list[str]:
+        return TOKEN_PATTERN.findall((text or "").lower())
+
+    @classmethod
+    def _keyword_score(cls, query_tokens: list[str], content: str) -> float:
+        content_tokens = cls._tokenize(content)
+        if not query_tokens or not content_tokens:
+            return 0.0
+
+        query_counter = Counter(query_tokens)
+        content_counter = Counter(content_tokens)
+        overlap = sum(
+            min(query_counter[token], content_counter.get(token, 0))
+            for token in query_counter
+        )
+        if overlap == 0:
+            return 0.0
+
+        normalized_score = overlap / math.sqrt(len(query_tokens) * len(content_tokens))
+        collapsed_query = "".join(query_tokens)
+        collapsed_content = "".join(content_tokens)
+        containment_bonus = (
+            0.15 if collapsed_query and collapsed_query in collapsed_content else 0.0
+        )
+        return min(normalized_score + containment_bonus, 1.0)
 
     def _refresh_manifest_counts(self, collection) -> int:
         if not self.manifest_path.exists():
