@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 
 import typer
 import uvicorn
@@ -11,6 +12,14 @@ from local_rag.store import KnowledgeBaseNotFoundError
 
 
 app = typer.Typer(no_args_is_help=True, help="本地 RAG 知识库")
+
+
+def configure_logging() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+        force=True,
+    )
 
 
 @app.command()
@@ -72,4 +81,5 @@ def serve(
 
 
 def main() -> None:
+    configure_logging()
     app()
