@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Sequence
 
 import numpy as np
+from sentence_transformers import SentenceTransformer
 
 
 def normalize_vectors(vectors: np.ndarray) -> np.ndarray:
@@ -34,9 +36,10 @@ class EmbeddingBackend:
         )
         return normalize_vectors(np.asarray(embeddings, dtype=np.float32))
 
+    async def encode_async(self, texts: Sequence[str]) -> np.ndarray:
+        return await asyncio.to_thread(self.encode, texts)
+
     def get_model(self):
         if self._model is None:
-            from sentence_transformers import SentenceTransformer
-
             self._model = SentenceTransformer(self.model_name)
         return self._model

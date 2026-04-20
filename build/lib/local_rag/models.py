@@ -44,3 +44,38 @@ class QueryResponse(BaseModel):
     answer: str
     used_generator: bool
     matches: list[SearchResult]
+
+
+class ChunkPageItem(BaseModel):
+    chunk: DocumentChunk
+
+
+class ChunkPage(BaseModel):
+    items: list[ChunkPageItem]
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
+
+
+class DeleteChunkResponse(BaseModel):
+    deleted: bool
+    chunk_id: str
+    remaining_chunks: int
+    remaining_documents: int
+
+
+class LlmProviderUpdateRequest(BaseModel):
+    provider: str = Field(min_length=1)
+
+
+class LlmStatusResponse(BaseModel):
+    provider: str
+    configured_provider: str
+    generation_enabled: bool
+    cuda_available: bool
+    local_model_loaded: bool
+    local_model_name: str
+    local_model_device: str
+    available_providers: list[str]
+    message: str = ""

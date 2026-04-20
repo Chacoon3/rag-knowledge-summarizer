@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Sequence
 
 import numpy as np
@@ -34,6 +35,9 @@ class EmbeddingBackend:
             show_progress_bar=False,
         )
         return normalize_vectors(np.asarray(embeddings, dtype=np.float32))
+
+    async def encode_async(self, texts: Sequence[str]) -> np.ndarray:
+        return await asyncio.to_thread(self.encode, texts)
 
     def get_model(self):
         if self._model is None:

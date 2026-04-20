@@ -181,6 +181,12 @@ h1 {
   margin-top: 24px;
 }
 
+.panel-library {
+  grid-column: 1 / -1;
+  background: rgba(252, 248, 242, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+}
+
 .panel {
   padding: 28px;
   border-radius: var(--radius-xl);
@@ -215,6 +221,13 @@ h1 {
   opacity: 0.78;
 }
 
+.panel-heading-inline {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: flex-start;
+}
+
 .stack-form {
   display: grid;
   gap: 16px;
@@ -233,6 +246,7 @@ h1 {
 
 input[type="text"],
 input[type="number"],
+select,
 textarea {
   width: 100%;
   border: 1px solid rgba(23, 33, 32, 0.12);
@@ -254,6 +268,7 @@ textarea {
 }
 
 input:focus,
+select:focus,
 textarea:focus {
   outline: none;
   border-color: rgba(199, 108, 45, 0.6);
@@ -354,6 +369,57 @@ textarea {
   margin-top: 24px;
 }
 
+.llm-console {
+  margin-top: 22px;
+  padding: 18px;
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(23, 33, 32, 0.08);
+}
+
+.llm-console-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.llm-console-header h3 {
+  margin: 0;
+}
+
+.llm-controls {
+  display: flex;
+  gap: 14px;
+  align-items: end;
+  margin-top: 16px;
+}
+
+.llm-provider-field {
+  min-width: 220px;
+}
+
+.llm-status-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.status-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(23, 33, 32, 0.08);
+}
+
+.llm-status-message {
+  margin-top: 14px;
+}
+
 .sources-header {
   display: flex;
   justify-content: space-between;
@@ -388,6 +454,98 @@ textarea {
 .sources-list {
   display: grid;
   gap: 14px;
+}
+
+.library-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: end;
+  margin-top: 22px;
+}
+
+.pager-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.library-list {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.library-item {
+  padding: 18px;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(23, 33, 32, 0.08);
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.library-item-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: start;
+}
+
+.library-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.library-id {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
+.library-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(53, 106, 98, 0.12);
+  color: var(--accent-2);
+  font-size: 0.88rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.delete-button {
+  appearance: none;
+  border: 1px solid rgba(167, 43, 22, 0.16);
+  border-radius: 999px;
+  min-height: 32px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #9a3412;
+  background: rgba(249, 115, 22, 0.12);
+  cursor: pointer;
+  transition:
+    transform 0.18s ease,
+    opacity 0.18s ease,
+    background 0.18s ease;
+}
+
+.delete-button:hover {
+  transform: translateY(-1px);
+  background: rgba(249, 115, 22, 0.18);
+}
+
+.library-item-body {
+  margin-top: 14px;
+  line-height: 1.75;
+  color: rgba(23, 33, 32, 0.86);
 }
 
 .source-item {
@@ -451,7 +609,15 @@ textarea {
 
   .sources-header,
   .source-meta,
-  .hero-actions {
+  .hero-actions,
+  .panel-heading-inline,
+  .llm-console-header,
+  .llm-controls,
+  .llm-status-grid,
+  .library-toolbar,
+  .library-item-header,
+  .pager-actions,
+  .library-actions {
     flex-direction: column;
     align-items: stretch;
   }

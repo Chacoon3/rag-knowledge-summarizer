@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import httpx
 from types import SimpleNamespace
 
 import pytest
@@ -30,6 +31,45 @@ def test_multi_generator_falls_back_to_next_provider() -> None:
     generator = MultiGenerator([FailingGenerator(), SuccessGenerator()])
 
     assert generator.generate("q", []) == "ok"
+
+
+@pytest.mark.anyio
+async def test_multi_generator_async_uses_native_async_provider() -> None:
+    class AsyncSuccessGenerator:
+        async def agenerate(self, question, matches):
+            return "ok"
+
+    generator = MultiGenerator([FailingGenerator(), AsyncSuccessGenerator()])
+
+    assert await generator.agenerate("q", []) == "ok"
+
+
+@pytest.mark.anyio
+async def test_ollama_async_generator_uses_httpx_async_client(monkeypatch) -> None:
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"response": "async ok"}
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, json):
+            return FakeResponse()
+
+    monkeypatch.setattr(httpx, "AsyncClient", FakeAsyncClient)
+    generator = OllamaGenerator(base_url="http://127.0.0.1:11434", model="qwen")
+
+    assert await generator.agenerate("q", []) == "async ok"
 
 
 def test_create_generator_auto_prefers_remote_free_models() -> None:

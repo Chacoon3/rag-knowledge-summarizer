@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import requests
+import asyncio
+
+import httpx
 import torch
-from requests import RequestException
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from local_rag.models import SearchResult
@@ -49,7 +50,27 @@ class MultiGenerator:
         for generator in self.generators:
             try:
                 answer = generator.generate(question, matches)
-            except (RequestException, RuntimeError, ImportError, ValueError) as exc:
+            except (httpx.HTTPError, RuntimeError, ImportError, ValueError) as exc:
+                last_error = exc
+                continue
+            if answer:
+                return answer
+
+        if last_error is not None:
+            raise last_error
+        return ""
+
+    async def agenerate(self, question: str, matches: list[SearchResult]) -> str:
+        last_error: Exception | None = None
+        for generator in self.generators:
+            try:
+                if hasattr(generator, "agenerate"):
+                    answer = await generator.agenerate(question, matches)
+                else:
+                    answer = await asyncio.to_thread(
+                        generator.generate, question, matches
+                    )
+            except (httpx.HTTPError, RuntimeError, ImportError, ValueError) as exc:
                 last_error = exc
                 continue
             if answer:
@@ -69,12 +90,22 @@ class OllamaGenerator:
 
     def generate(self, question: str, matches: list[SearchResult]) -> str:
         prompt = build_prompt(question, matches)
+        with httpx.Client(timeout=self.timeout_seconds) as client:
+            response = client.post(
+                f"{self.base_url}/api/generate",
+                json={"model": self.model, "prompt": prompt, "stream": False},
+            )
+        response.raise_for_status()
+        payload = response.json()
+        return payload.get("response", "").strip()
 
-        response = requests.post(
-            f"{self.base_url}/api/generate",
-            json={"model": self.model, "prompt": prompt, "stream": False},
-            timeout=self.timeout_seconds,
-        )
+    async def agenerate(self, question: str, matches: list[SearchResult]) -> str:
+        prompt = build_prompt(question, matches)
+        async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+            response = await client.post(
+                f"{self.base_url}/api/generate",
+                json={"model": self.model, "prompt": prompt, "stream": False},
+            )
         response.raise_for_status()
         payload = response.json()
         return payload.get("response", "").strip()
@@ -98,20 +129,44 @@ class GeminiGenerator:
 
     def generate(self, question: str, matches: list[SearchResult]) -> str:
         prompt = build_prompt(question, matches)
-        response = requests.post(
-            f"{self.base_url}/models/{self.model}:generateContent",
-            params={"key": self.api_key},
-            json={
-                "contents": [
-                    {
-                        "parts": [
-                            {"text": prompt},
-                        ]
-                    }
-                ]
-            },
-            timeout=self.timeout_seconds,
-        )
+        with httpx.Client(timeout=self.timeout_seconds) as client:
+            response = client.post(
+                f"{self.base_url}/models/{self.model}:generateContent",
+                params={"key": self.api_key},
+                json={
+                    "contents": [
+                        {
+                            "parts": [
+                                {"text": prompt},
+                            ]
+                        }
+                    ]
+                },
+            )
+        response.raise_for_status()
+        payload = response.json()
+        candidates = payload.get("candidates", [])
+        if not candidates:
+            return ""
+        parts = candidates[0].get("content", {}).get("parts", [])
+        return "".join(part.get("text", "") for part in parts).strip()
+
+    async def agenerate(self, question: str, matches: list[SearchResult]) -> str:
+        prompt = build_prompt(question, matches)
+        async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+            response = await client.post(
+                f"{self.base_url}/models/{self.model}:generateContent",
+                params={"key": self.api_key},
+                json={
+                    "contents": [
+                        {
+                            "parts": [
+                                {"text": prompt},
+                            ]
+                        }
+                    ]
+                },
+            )
         response.raise_for_status()
         payload = response.json()
         candidates = payload.get("candidates", [])
@@ -139,20 +194,43 @@ class OpenRouterGenerator:
 
     def generate(self, question: str, matches: list[SearchResult]) -> str:
         prompt = build_prompt(question, matches)
-        response = requests.post(
-            f"{self.base_url}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": self.model,
-                "messages": [
-                    {"role": "user", "content": prompt},
-                ],
-            },
-            timeout=self.timeout_seconds,
-        )
+        with httpx.Client(timeout=self.timeout_seconds) as client:
+            response = client.post(
+                f"{self.base_url}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": self.model,
+                    "messages": [
+                        {"role": "user", "content": prompt},
+                    ],
+                },
+            )
+        response.raise_for_status()
+        payload = response.json()
+        choices = payload.get("choices", [])
+        if not choices:
+            return ""
+        return choices[0].get("message", {}).get("content", "").strip()
+
+    async def agenerate(self, question: str, matches: list[SearchResult]) -> str:
+        prompt = build_prompt(question, matches)
+        async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+            response = await client.post(
+                f"{self.base_url}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": self.model,
+                    "messages": [
+                        {"role": "user", "content": prompt},
+                    ],
+                },
+            )
         response.raise_for_status()
         payload = response.json()
         choices = payload.get("choices", [])
@@ -214,6 +292,9 @@ class LocalTransformersGenerator:
             output = model.generate(**model_inputs, **generation_kwargs)
         generated_ids = output[0][input_length:]
         return tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
+
+    async def agenerate(self, question: str, matches: list[SearchResult]) -> str:
+        return await asyncio.to_thread(self.generate, question, matches)
 
     def _ensure_model_loaded(self):
         if self._model is not None and self._tokenizer is not None:

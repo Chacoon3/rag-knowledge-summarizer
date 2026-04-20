@@ -24,5 +24,7 @@ src/local_rag_kb.egg-info/requires.txt
 src/local_rag_kb.egg-info/top_level.txt
 tests/test_api.py
 tests/test_chunking.py
+tests/test_generation.py
+tests/test_llm_api.py
 tests/test_retriever.py
 tests/test_store.py

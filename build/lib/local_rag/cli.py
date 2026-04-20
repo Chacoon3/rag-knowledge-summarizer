@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 
 import typer
@@ -20,7 +21,7 @@ def ingest(
 ) -> None:
     service = RagService()
     try:
-        stats = service.ingest(source_dir)
+        stats = asyncio.run(service.ingest_async(source_dir))
     except (FileNotFoundError, ValueError) as exc:
         typer.secho(str(exc), err=True, fg=typer.colors.RED)
         raise typer.Exit(code=1) from exc
@@ -38,7 +39,7 @@ def query(
 ) -> None:
     service = RagService()
     try:
-        response = service.query(question, top_k=top_k)
+        response = asyncio.run(service.query_async(question, top_k=top_k))
     except KnowledgeBaseNotFoundError as exc:
         typer.secho(str(exc), err=True, fg=typer.colors.RED)
         raise typer.Exit(code=1) from exc
@@ -54,7 +55,7 @@ def query(
 def show_manifest() -> None:
     service = RagService()
     try:
-        manifest = service.manifest()
+        manifest = asyncio.run(service.manifest_async())
     except KnowledgeBaseNotFoundError as exc:
         typer.secho(str(exc), err=True, fg=typer.colors.RED)
         raise typer.Exit(code=1) from exc

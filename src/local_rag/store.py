@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 import chromadb
@@ -60,6 +61,15 @@ class LocalVectorStore:
         else:
             self._merge_manifest(collection, manifest)
 
+    async def save_async(
+        self,
+        chunks: list[DocumentChunk],
+        embeddings: np.ndarray,
+        manifest: KnowledgeBaseManifest,
+        replace: bool = True,
+    ) -> None:
+        await asyncio.to_thread(self.save, chunks, embeddings, manifest, replace)
+
     def load_manifest(self) -> KnowledgeBaseManifest:
         if not self.is_ready():
             raise KnowledgeBaseNotFoundError("本地知识库尚未建立，请先执行 ingest。")
@@ -67,6 +77,9 @@ class LocalVectorStore:
         return KnowledgeBaseManifest.model_validate_json(
             self.manifest_path.read_text(encoding="utf-8")
         )
+
+    async def load_manifest_async(self) -> KnowledgeBaseManifest:
+        return await asyncio.to_thread(self.load_manifest)
 
     def search(
         self,
@@ -109,6 +122,14 @@ class LocalVectorStore:
             results.append(SearchResult(chunk=chunk, score=score))
 
         return results
+
+    async def search_async(
+        self,
+        query_embedding: np.ndarray,
+        top_k: int,
+        threshold: float = 0.0,
+    ) -> list[SearchResult]:
+        return await asyncio.to_thread(self.search, query_embedding, top_k, threshold)
 
     def list_chunks(self, page: int = 1, page_size: int = 10) -> ChunkPage:
         if page <= 0:
@@ -153,6 +174,9 @@ class LocalVectorStore:
             total_pages=total_pages,
         )
 
+    async def list_chunks_async(self, page: int = 1, page_size: int = 10) -> ChunkPage:
+        return await asyncio.to_thread(self.list_chunks, page, page_size)
+
     def delete_chunk(self, chunk_id: str) -> DeleteChunkResponse:
         if not chunk_id.strip():
             raise ValueError("chunk_id 不能为空")
@@ -176,6 +200,9 @@ class LocalVectorStore:
             remaining_documents=remaining_documents,
         )
 
+    async def delete_chunk_async(self, chunk_id: str) -> DeleteChunkResponse:
+        return await asyncio.to_thread(self.delete_chunk, chunk_id)
+
     def is_ready(self) -> bool:
         if not self.manifest_path.exists():
             return False
@@ -186,6 +213,9 @@ class LocalVectorStore:
             return False
 
         return collection.count() > 0
+
+    async def is_ready_async(self) -> bool:
+        return await asyncio.to_thread(self.is_ready)
 
     def _reset_collection(self):
         try:

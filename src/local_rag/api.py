@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 from importlib.resources import files
 from pathlib import Path
@@ -60,47 +61,47 @@ def index() -> FileResponse:
 
 
 @router.get("/health")
-def health(request: Request) -> dict[str, bool]:
+async def health(request: Request) -> dict[str, bool]:
     service = get_service(request)
-    return {"status": True, "index_ready": service.store.is_ready()}
+    return {"status": True, "index_ready": await service.store.is_ready_async()}
 
 
 @router.get("/llm/status", response_model=LlmStatusResponse)
-def get_llm_status(request: Request) -> LlmStatusResponse:
+async def get_llm_status(request: Request) -> LlmStatusResponse:
     service = get_service(request)
-    return service.get_llm_status()
+    return await service.get_llm_status_async()
 
 
 @router.put("/llm/provider", response_model=LlmStatusResponse)
-def update_llm_provider(
+async def update_llm_provider(
     payload: LlmProviderUpdateRequest,
     request: Request,
 ) -> LlmStatusResponse:
     service = get_service(request)
     try:
-        return service.set_generation_provider(payload.provider)
+        return await service.set_generation_provider_async(payload.provider)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/manifest", response_model=KnowledgeBaseManifest)
-def get_manifest(request: Request) -> KnowledgeBaseManifest:
+async def get_manifest(request: Request) -> KnowledgeBaseManifest:
     service = get_service(request)
     try:
-        return service.manifest()
+        return await service.manifest_async()
     except KnowledgeBaseNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.get("/chunks", response_model=ChunkPage)
-def get_chunks(
+async def get_chunks(
     request: Request,
     page: int = 1,
     page_size: int = 10,
 ) -> ChunkPage:
     service = get_service(request)
     try:
-        return service.list_chunks(page=page, page_size=page_size)
+        return await service.list_chunks_async(page=page, page_size=page_size)
     except KnowledgeBaseNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
@@ -108,10 +109,10 @@ def get_chunks(
 
 
 @router.delete("/chunks/{chunk_id}", response_model=DeleteChunkResponse)
-def delete_chunk(chunk_id: str, request: Request) -> DeleteChunkResponse:
+async def delete_chunk(chunk_id: str, request: Request) -> DeleteChunkResponse:
     service = get_service(request)
     try:
-        return service.delete_chunk(chunk_id)
+        return await service.delete_chunk_async(chunk_id)
     except KnowledgeBaseNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
@@ -121,13 +122,13 @@ def delete_chunk(chunk_id: str, request: Request) -> DeleteChunkResponse:
 
 
 @router.post("/ingest", response_model=IngestStats)
-def ingest(
+async def ingest(
     request: Request,
     payload: IngestRequest = Body(default_factory=IngestRequest),
 ) -> IngestStats:
     service = get_service(request)
     try:
-        return service.ingest(payload.source_dir)
+        return await service.ingest_async(payload.source_dir)
     except (FileNotFoundError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -150,10 +151,14 @@ async def upload(
             for index, uploaded in enumerate(files, start=1):
                 filename = _build_upload_name(uploaded.filename, index)
                 target_path = temp_root / filename
-                target_path.write_bytes(await uploaded.read())
+                file_content = await uploaded.read()
+                await asyncio.to_thread(target_path.write_bytes, file_content)
                 saved_files.append(target_path)
 
-            return service.ingest_files(saved_files, source_label=source_label)
+            return await service.ingest_files_async(
+                saved_files,
+                source_label=source_label,
+            )
         except (FileNotFoundError, ValueError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         finally:
@@ -162,10 +167,10 @@ async def upload(
 
 
 @router.post("/query", response_model=QueryResponse)
-def query(payload: QueryRequest, request: Request) -> QueryResponse:
+async def query(payload: QueryRequest, request: Request) -> QueryResponse:
     service = get_service(request)
     try:
-        return service.query(payload.question, top_k=payload.top_k)
+        return await service.query_async(payload.question, top_k=payload.top_k)
     except KnowledgeBaseNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
