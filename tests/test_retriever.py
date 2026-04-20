@@ -3,8 +3,14 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from local_rag.cache import InMemoryKeyValueCache
 from local_rag.models import DocumentChunk, KnowledgeBaseManifest
-from local_rag.retriever import HybridSearchConfig, RerankConfig, Retriever
+from local_rag.retriever import (
+    HybridSearchConfig,
+    RetrievalCacheConfig,
+    RerankConfig,
+    Retriever,
+)
 from local_rag.store import LocalVectorStore
 
 
@@ -256,3 +262,106 @@ async def test_rerank_async_reorders_vector_candidates_by_query_coverage(
 
     assert len(results) == 1
     assert results[0].chunk.source_path == "finance.md"
+
+
+def test_retrieval_cache_reuses_cached_results(tmp_path) -> None:
+    store = LocalVectorStore(tmp_path / "storage")
+    chunks = [
+        DocumentChunk(
+            chunk_id="finance-1",
+            source_path="finance.md",
+            content="财务审批流程需要部门负责人确认并归档。",
+            index=0,
+            char_count=19,
+        ),
+    ]
+    embeddings = np.asarray([[1.0, 0.0]], dtype=np.float32)
+    manifest = KnowledgeBaseManifest(
+        source_dir="data/docs",
+        embedding_model="flat-model",
+        chunk_size=300,
+        chunk_overlap=50,
+        indexed_at="2026-04-19T00:00:00+00:00",
+        document_count=1,
+        chunk_count=1,
+    )
+    store.save(chunks, embeddings, manifest)
+    cache_backend = InMemoryKeyValueCache()
+    retriever = Retriever(
+        store=store,
+        embedder=FlatEmbedder(),
+        threshold=0.0,
+        hybrid_config=HybridSearchConfig(mode="vector", candidate_multiplier=2),
+        rerank_config=RerankConfig(enabled=False),
+        retrieval_cache=cache_backend,
+        retrieval_cache_config=RetrievalCacheConfig(enabled=True, ttl_seconds=300),
+        retrieval_cache_namespace="test-namespace",
+    )
+
+    original_search = store.search
+    search_calls = 0
+
+    def counted_search(*args, **kwargs):
+        nonlocal search_calls
+        search_calls += 1
+        return original_search(*args, **kwargs)
+
+    store.search = counted_search
+
+    first = retriever.search("财务审批流程", top_k=1)
+    second = retriever.search("财务审批流程", top_k=1)
+
+    assert search_calls == 1
+    assert first[0].chunk.source_path == second[0].chunk.source_path == "finance.md"
+
+
+@pytest.mark.anyio
+async def test_retrieval_cache_reuses_cached_results_async(tmp_path) -> None:
+    store = LocalVectorStore(tmp_path / "storage")
+    chunks = [
+        DocumentChunk(
+            chunk_id="finance-1",
+            source_path="finance.md",
+            content="财务审批流程需要部门负责人确认并归档。",
+            index=0,
+            char_count=19,
+        ),
+    ]
+    embeddings = np.asarray([[1.0, 0.0]], dtype=np.float32)
+    manifest = KnowledgeBaseManifest(
+        source_dir="data/docs",
+        embedding_model="flat-model",
+        chunk_size=300,
+        chunk_overlap=50,
+        indexed_at="2026-04-19T00:00:00+00:00",
+        document_count=1,
+        chunk_count=1,
+    )
+    await store.save_async(chunks, embeddings, manifest)
+    cache_backend = InMemoryKeyValueCache()
+    retriever = Retriever(
+        store=store,
+        embedder=FlatEmbedder(),
+        threshold=0.0,
+        hybrid_config=HybridSearchConfig(mode="vector", candidate_multiplier=2),
+        rerank_config=RerankConfig(enabled=False),
+        retrieval_cache=cache_backend,
+        retrieval_cache_config=RetrievalCacheConfig(enabled=True, ttl_seconds=300),
+        retrieval_cache_namespace="test-namespace",
+    )
+
+    original_search_async = store.search_async
+    search_calls = 0
+
+    async def counted_search_async(*args, **kwargs):
+        nonlocal search_calls
+        search_calls += 1
+        return await original_search_async(*args, **kwargs)
+
+    store.search_async = counted_search_async
+
+    first = await retriever.search_async("财务审批流程", top_k=1)
+    second = await retriever.search_async("财务审批流程", top_k=1)
+
+    assert search_calls == 1
+    assert first[0].chunk.source_path == second[0].chunk.source_path == "finance.md"

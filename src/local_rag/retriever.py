@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+import hashlib
 import re
 
 from local_rag.models import SearchResult
@@ -25,6 +26,12 @@ class RerankConfig:
     candidate_multiplier: int = 3
 
 
+@dataclass(slots=True)
+class RetrievalCacheConfig:
+    enabled: bool = True
+    ttl_seconds: int = 300
+
+
 TOKEN_PATTERN = re.compile(r"[a-z0-9_]+|[\u4e00-\u9fff]", re.IGNORECASE)
 
 
@@ -36,20 +43,32 @@ class Retriever:
         threshold: float = 0.0,
         hybrid_config: HybridSearchConfig | None = None,
         rerank_config: RerankConfig | None = None,
+        retrieval_cache=None,
+        retrieval_cache_config: RetrievalCacheConfig | None = None,
+        retrieval_cache_namespace: str = "default",
     ) -> None:
         self.store = store
         self.embedder = embedder
         self.threshold = threshold
         self.hybrid_config = hybrid_config or HybridSearchConfig()
         self.rerank_config = rerank_config or RerankConfig()
+        self.retrieval_cache = retrieval_cache
+        self.retrieval_cache_config = retrieval_cache_config or RetrievalCacheConfig()
+        self.retrieval_cache_namespace = retrieval_cache_namespace
 
     def search(self, question: str, top_k: int) -> list[SearchResult]:
+        cached_results = self._get_cached_results(question, top_k)
+        if cached_results is not None:
+            return cached_results
+
         if self.hybrid_config.mode == "vector":
             results = self._vector_search(question, self._candidate_count(top_k))
         else:
             results = self._hybrid_search(question, top_k)
 
-        return self._rerank_results(question, results, top_k)
+        reranked = self._rerank_results(question, results, top_k)
+        self._set_cached_results(question, top_k, reranked)
+        return reranked
 
     def _vector_search(self, question: str, top_k: int) -> list[SearchResult]:
         query_vector = self.embedder.encode([question])[0]
@@ -74,6 +93,10 @@ class Retriever:
         return self._merge_results(vector_results, keyword_results, top_k)
 
     async def search_async(self, question: str, top_k: int) -> list[SearchResult]:
+        cached_results = await self._get_cached_results_async(question, top_k)
+        if cached_results is not None:
+            return cached_results
+
         if self.hybrid_config.mode == "vector":
             if hasattr(self.embedder, "encode_async"):
                 query_embeddings = await self.embedder.encode_async([question])
@@ -110,7 +133,9 @@ class Retriever:
                 vector_results, keyword_results, candidate_count
             )
 
-        return self._rerank_results(question, results, top_k)
+        reranked = self._rerank_results(question, results, top_k)
+        await self._set_cached_results_async(question, top_k, reranked)
+        return reranked
 
     def _merge_results(
         self,
@@ -199,3 +224,86 @@ class Retriever:
             return 0.0
         collapsed_content = cls._collapse_tokens(cls._tokenize(content))
         return 1.0 if query_phrase in collapsed_content else 0.0
+
+    def _get_cached_results(
+        self,
+        question: str,
+        top_k: int,
+    ) -> list[SearchResult] | None:
+        if not self._retrieval_cache_enabled():
+            return None
+
+        key = self._build_cache_key(question, top_k)
+        payloads = self.retrieval_cache.get_json_many([key])
+        payload = payloads.get(key)
+        if payload is None:
+            return None
+        return [SearchResult.model_validate(item) for item in payload]
+
+    async def _get_cached_results_async(
+        self,
+        question: str,
+        top_k: int,
+    ) -> list[SearchResult] | None:
+        if not self._retrieval_cache_enabled():
+            return None
+
+        key = self._build_cache_key(question, top_k)
+        payloads = await self.retrieval_cache.get_json_many_async([key])
+        payload = payloads.get(key)
+        if payload is None:
+            return None
+        return [SearchResult.model_validate(item) for item in payload]
+
+    def _set_cached_results(
+        self,
+        question: str,
+        top_k: int,
+        results: list[SearchResult],
+    ) -> None:
+        if not self._retrieval_cache_enabled():
+            return
+
+        self.retrieval_cache.set_json_many(
+            {
+                self._build_cache_key(question, top_k): [
+                    result.model_dump() for result in results
+                ]
+            },
+            ttl_seconds=self.retrieval_cache_config.ttl_seconds,
+        )
+
+    async def _set_cached_results_async(
+        self,
+        question: str,
+        top_k: int,
+        results: list[SearchResult],
+    ) -> None:
+        if not self._retrieval_cache_enabled():
+            return
+
+        await self.retrieval_cache.set_json_many_async(
+            {
+                self._build_cache_key(question, top_k): [
+                    result.model_dump() for result in results
+                ]
+            },
+            ttl_seconds=self.retrieval_cache_config.ttl_seconds,
+        )
+
+    def _retrieval_cache_enabled(self) -> bool:
+        return (
+            self.retrieval_cache is not None
+            and self.retrieval_cache_config.enabled
+            and self.retrieval_cache_config.ttl_seconds > 0
+        )
+
+    def _build_cache_key(self, question: str, top_k: int) -> str:
+        digest = hashlib.sha256(question.encode("utf-8")).hexdigest()
+        return self.retrieval_cache.build_key(
+            "retrieval",
+            self.retrieval_cache_namespace,
+            self.hybrid_config.mode,
+            f"topk_{top_k}",
+            digest,
+        )

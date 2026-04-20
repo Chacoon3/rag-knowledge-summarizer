@@ -18,6 +18,7 @@ dependencies = [
     "pypdf>=5.1",
     "python-multipart>=0.0.12",
     "python-docx>=1.1",
+    "redis>=5.2",
     "sentence-transformers>=3.3",
     "typer>=0.12",
     "uvicorn[standard]>=0.32",

@@ -19,8 +19,12 @@ class Settings(BaseSettings):
     project_root: Path = _PROJECT_ROOT
     data_dir: Path = _PROJECT_ROOT / "data" / "docs"
     storage_dir: Path = _PROJECT_ROOT / "storage"
+    redis_url: str = "redis://127.0.0.1:6379/0"
+    cache_key_prefix: str = "local_rag"
     chroma_collection_name: str = "local-rag-kb"
     embedding_model: str = "BAAI/bge-small-zh-v1.5"
+    embedding_cache_enabled: bool = True
+    embedding_cache_ttl_seconds: int = 86400
     chunk_size: int = 500
     chunk_overlap: int = 80
     top_k: int = 4
@@ -34,6 +38,8 @@ class Settings(BaseSettings):
     rerank_keyword_weight: float = 0.3
     rerank_phrase_weight: float = 0.15
     rerank_candidate_multiplier: int = 3
+    retrieval_cache_enabled: bool = True
+    retrieval_cache_ttl_seconds: int = 300
     enable_generation: bool = True
     generation_provider: str = "auto"
     gemini_api_key: str = ""

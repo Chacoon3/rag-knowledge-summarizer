@@ -7,6 +7,7 @@ from typing import Sequence
 
 import httpx
 
+from local_rag.cache import RedisKeyValueCache
 from local_rag.chunking import chunk_document
 from local_rag.embeddings import EmbeddingBackend
 from local_rag.generation import (
@@ -28,7 +29,12 @@ from local_rag.models import (
     LlmStatusResponse,
     QueryResponse,
 )
-from local_rag.retriever import HybridSearchConfig, RerankConfig, Retriever
+from local_rag.retriever import (
+    HybridSearchConfig,
+    RetrievalCacheConfig,
+    RerankConfig,
+    Retriever,
+)
 from local_rag.settings import Settings
 from local_rag.store import LocalVectorStore
 
@@ -42,11 +48,20 @@ class RagService:
         generator=None,
     ) -> None:
         self.settings = settings or Settings()
+        self.cache_backend = RedisKeyValueCache(
+            url=self.settings.redis_url,
+            key_prefix=self.settings.cache_key_prefix,
+        )
         self.store = store or LocalVectorStore(
             self.settings.storage_dir,
             collection_name=self.settings.chroma_collection_name,
         )
-        self.embedder = embedder or EmbeddingBackend(self.settings.embedding_model)
+        self.embedder = embedder or EmbeddingBackend(
+            self.settings.embedding_model,
+            cache_backend=self.cache_backend,
+            cache_enabled=self.settings.embedding_cache_enabled,
+            cache_ttl_seconds=self.settings.embedding_cache_ttl_seconds,
+        )
 
         if generator is None and self.settings.enable_generation:
             generator = create_generator(self.settings)
@@ -238,6 +253,7 @@ class RagService:
         return self.get_llm_status()
 
     def query(self, question: str, top_k: int | None = None) -> QueryResponse:
+        manifest = self.store.load_manifest()
         retriever = Retriever(
             store=self.store,
             embedder=self.embedder,
@@ -255,6 +271,12 @@ class RagService:
                 phrase_weight=self.settings.rerank_phrase_weight,
                 candidate_multiplier=self.settings.rerank_candidate_multiplier,
             ),
+            retrieval_cache=self.cache_backend,
+            retrieval_cache_config=RetrievalCacheConfig(
+                enabled=self.settings.retrieval_cache_enabled,
+                ttl_seconds=self.settings.retrieval_cache_ttl_seconds,
+            ),
+            retrieval_cache_namespace=self._retrieval_cache_namespace(manifest),
         )
         matches = retriever.search(question, top_k=top_k or self.settings.top_k)
         if not matches:
@@ -286,6 +308,7 @@ class RagService:
     async def query_async(
         self, question: str, top_k: int | None = None
     ) -> QueryResponse:
+        manifest = await self.store.load_manifest_async()
         retriever = Retriever(
             store=self.store,
             embedder=self.embedder,
@@ -303,6 +326,12 @@ class RagService:
                 phrase_weight=self.settings.rerank_phrase_weight,
                 candidate_multiplier=self.settings.rerank_candidate_multiplier,
             ),
+            retrieval_cache=self.cache_backend,
+            retrieval_cache_config=RetrievalCacheConfig(
+                enabled=self.settings.retrieval_cache_enabled,
+                ttl_seconds=self.settings.retrieval_cache_ttl_seconds,
+            ),
+            retrieval_cache_namespace=self._retrieval_cache_namespace(manifest),
         )
         matches = await retriever.search_async(question, top_k or self.settings.top_k)
         if not matches:
@@ -336,4 +365,13 @@ class RagService:
             answer=answer,
             used_generator=used_generator,
             matches=matches,
+        )
+
+    @staticmethod
+    def _retrieval_cache_namespace(manifest: KnowledgeBaseManifest) -> str:
+        return (
+            f"{manifest.embedding_model}:"
+            f"{manifest.indexed_at}:"
+            f"{manifest.chunk_count}:"
+            f"{manifest.document_count}"
         )
