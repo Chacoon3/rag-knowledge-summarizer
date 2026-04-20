@@ -8,6 +8,7 @@ import numpy as np
 from local_rag.models import (
     ChunkPage,
     ChunkPageItem,
+    DeleteChunkResponse,
     DocumentChunk,
     KnowledgeBaseManifest,
     SearchResult,
@@ -42,18 +43,22 @@ class LocalVectorStore:
         chunks: list[DocumentChunk],
         embeddings: np.ndarray,
         manifest: KnowledgeBaseManifest,
+        replace: bool = True,
     ) -> None:
         self.storage_dir.mkdir(parents=True, exist_ok=True)
-        collection = self._reset_collection()
+        collection = self._reset_collection() if replace else self._get_collection()
         collection.upsert(
             ids=[chunk.chunk_id for chunk in chunks],
             documents=[chunk.content for chunk in chunks],
             metadatas=[self._serialize_metadata(chunk) for chunk in chunks],
             embeddings=np.asarray(embeddings, dtype=np.float32).tolist(),
         )
-        self.manifest_path.write_text(
-            manifest.model_dump_json(indent=2), encoding="utf-8"
-        )
+        if replace or not self.manifest_path.exists():
+            self.manifest_path.write_text(
+                manifest.model_dump_json(indent=2), encoding="utf-8"
+            )
+        else:
+            self._merge_manifest(collection, manifest)
 
     def load_manifest(self) -> KnowledgeBaseManifest:
         if not self.is_ready():
@@ -115,6 +120,8 @@ class LocalVectorStore:
 
         collection = self.client.get_collection(self.collection_name)
         total = collection.count()
+        total_pages = max((total + page_size - 1) // page_size, 1)
+        page = min(page, total_pages)
         offset = (page - 1) * page_size
         payload = collection.get(
             limit=page_size,
@@ -138,13 +145,35 @@ class LocalVectorStore:
             )
             items.append(ChunkPageItem(chunk=chunk))
 
-        total_pages = max((total + page_size - 1) // page_size, 1)
         return ChunkPage(
             items=items,
             page=page,
             page_size=page_size,
             total=total,
             total_pages=total_pages,
+        )
+
+    def delete_chunk(self, chunk_id: str) -> DeleteChunkResponse:
+        if not chunk_id.strip():
+            raise ValueError("chunk_id 不能为空")
+        if not self.is_ready():
+            raise KnowledgeBaseNotFoundError("本地知识库尚未建立，请先执行 ingest。")
+
+        collection = self.client.get_collection(self.collection_name)
+        payload = collection.get(ids=[chunk_id], include=["metadatas"])
+        ids = payload.get("ids", [])
+        if not ids:
+            raise ValueError(f"未找到 chunk: {chunk_id}")
+
+        collection.delete(ids=[chunk_id])
+        remaining_chunks = collection.count()
+        remaining_documents = self._refresh_manifest_counts(collection)
+
+        return DeleteChunkResponse(
+            deleted=True,
+            chunk_id=chunk_id,
+            remaining_chunks=remaining_chunks,
+            remaining_documents=remaining_documents,
         )
 
     def is_ready(self) -> bool:
@@ -164,6 +193,9 @@ class LocalVectorStore:
         except Exception:
             pass
 
+        return self._get_collection()
+
+    def _get_collection(self):
         return self.client.get_or_create_collection(
             name=self.collection_name,
             metadata={"hnsw:space": "cosine"},
@@ -182,3 +214,55 @@ class LocalVectorStore:
             if isinstance(value, (str, int, float, bool)):
                 metadata[key] = value
         return metadata
+
+    def _refresh_manifest_counts(self, collection) -> int:
+        if not self.manifest_path.exists():
+            return 0
+
+        manifest = KnowledgeBaseManifest.model_validate_json(
+            self.manifest_path.read_text(encoding="utf-8")
+        )
+        remaining_chunks = collection.count()
+        if remaining_chunks > 0:
+            payload = collection.get(include=["metadatas"])
+            metadatas = payload.get("metadatas", [])
+            source_paths = {
+                str(metadata.get("source_path", "unknown"))
+                for metadata in metadatas
+                if metadata is not None
+            }
+            manifest.document_count = len(source_paths)
+        else:
+            manifest.document_count = 0
+
+        manifest.chunk_count = remaining_chunks
+        self.manifest_path.write_text(
+            manifest.model_dump_json(indent=2), encoding="utf-8"
+        )
+        return manifest.document_count
+
+    def _merge_manifest(
+        self,
+        collection,
+        latest_manifest: KnowledgeBaseManifest,
+    ) -> None:
+        manifest = KnowledgeBaseManifest.model_validate_json(
+            self.manifest_path.read_text(encoding="utf-8")
+        )
+        payload = collection.get(include=["metadatas"])
+        metadatas = payload.get("metadatas", [])
+        source_paths = {
+            str(metadata.get("source_path", "unknown"))
+            for metadata in metadatas
+            if metadata is not None
+        }
+        manifest.source_dir = latest_manifest.source_dir
+        manifest.embedding_model = latest_manifest.embedding_model
+        manifest.chunk_size = latest_manifest.chunk_size
+        manifest.chunk_overlap = latest_manifest.chunk_overlap
+        manifest.indexed_at = latest_manifest.indexed_at
+        manifest.document_count = len(source_paths)
+        manifest.chunk_count = collection.count()
+        self.manifest_path.write_text(
+            manifest.model_dump_json(indent=2), encoding="utf-8"
+        )

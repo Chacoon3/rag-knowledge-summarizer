@@ -74,6 +74,55 @@
             <h2>知识问答</h2>
             <p>基于当前 Chroma 索引检索相关片段，并调用本地模型生成答案。</p>
           </div>
+          <div class="llm-console">
+            <div class="llm-console-header">
+              <h3>LLM 运行状态</h3>
+              <button
+                id="refresh-llm-status"
+                class="ghost-button"
+                type="button"
+              >
+                刷新 LLM 状态
+              </button>
+            </div>
+            <div class="llm-controls">
+              <label class="field narrow-field llm-provider-field">
+                <span>Provider</span>
+                <select id="provider-select">
+                  <option value="auto">auto</option>
+                  <option value="local_transformers">local_transformers</option>
+                  <option value="ollama">ollama</option>
+                  <option value="gemini">gemini</option>
+                  <option value="openrouter">openrouter</option>
+                </select>
+              </label>
+              <button
+                id="apply-provider-button"
+                class="primary-button"
+                type="button"
+              >
+                切换 Provider
+              </button>
+            </div>
+            <div class="llm-status-grid">
+              <div class="status-card">
+                <span class="hero-card-label">当前 Provider</span>
+                <strong id="llm-provider-value">等待检测</strong>
+              </div>
+              <div class="status-card">
+                <span class="hero-card-label">CUDA</span>
+                <strong id="cuda-status-value">等待检测</strong>
+              </div>
+              <div class="status-card">
+                <span class="hero-card-label">本地模型</span>
+                <strong id="local-model-loaded-value">等待检测</strong>
+                <span id="local-model-name-value">-</span>
+              </div>
+            </div>
+            <div id="llm-status-message" class="muted-box llm-status-message">
+              等待检测
+            </div>
+          </div>
           <form id="query-form" class="stack-form">
             <label class="field">
               <span>问题</span>
@@ -120,7 +169,10 @@
           <div class="panel-heading panel-heading-inline">
             <div>
               <h2>向量数据库内容</h2>
-              <p>分页查看当前 Chroma 中已存储的全部切片内容与元数据。</p>
+              <p>
+                分页查看当前 Chroma
+                中已存储的全部切片内容与元数据，并支持逐条删除。
+              </p>
             </div>
             <div class="pagination-meta">
               <span id="chunks-summary" class="flag-chip">暂无数据</span>

@@ -1,6 +1,6 @@
 # 本地 RAG 知识库
 
-这是一个完全本地运行的 RAG 示例项目，包含文档入库、切片、向量检索、可选的 Ollama 回答生成，以及一套 CLI、HTTP API 和内置 Web 前端。
+这是一个完全本地运行的 RAG 示例项目，包含文档入库、切片、向量检索、可选的多 LLM 回答生成，以及一套 CLI、HTTP API 和内置 Web 前端。
 
 ## 设计目标
 
@@ -8,7 +8,7 @@
 - 默认适配中文语料，支持 `.txt`、`.md`、`.pdf`、`.docx`。
 - 使用本地 embedding 模型构建向量索引，索引结果持久化到 `storage/`。
 - 使用 Chroma 作为本地向量数据库，索引结果持久化到 `storage/chroma/`。
-- 如果本机已经安装并启动 Ollama，可以直接接入本地大模型生成答案。
+- 支持免费可用的 Gemini、OpenRouter 免费模型、Ollama，以及内置的本地 Transformers 推理。
 - 如果 Ollama 不可用，系统会退化成“检索结果摘要”模式，仍然能返回最相关片段。
 
 ## 架构说明
@@ -18,7 +18,7 @@
 3. 向量化层：默认使用 `BAAI/bge-small-zh-v1.5` 生成本地 embedding。
 4. 存储层：将切片和向量写入本地 Chroma，索引信息写入 `storage/manifest.json`。
 5. 检索层：基于余弦相似度召回最相关片段。
-6. 生成层：可选调用本机 Ollama，把检索到的片段拼入 prompt 生成最终答案。
+6. 生成层：可选调用 Gemini 免费层、OpenRouter 免费模型、本地 Transformers 模型或本机 Ollama，把检索到的片段拼入 prompt 生成最终答案。
 
 ## 目录结构
 
@@ -120,11 +120,41 @@ curl -X POST http://127.0.0.1:8000/upload \
 - `RAG_CHUNK_OVERLAP`：切片重叠长度。
 - `RAG_TOP_K`：默认召回数量。
 - `RAG_SIMILARITY_THRESHOLD`：相似度阈值。
-- `RAG_ENABLE_GENERATION`：是否启用本地 LLM 生成。
+- `RAG_ENABLE_GENERATION`：是否启用 LLM 生成。
+- `RAG_GENERATION_PROVIDER`：`auto`、`gemini`、`openrouter`、`local_transformers`、`ollama`。
+- `RAG_GEMINI_API_KEY`：Gemini API Key。
+- `RAG_GEMINI_MODEL`：Gemini 模型名，默认 `gemini-2.0-flash`。
+- `RAG_OPENROUTER_API_KEY`：OpenRouter API Key。
+- `RAG_OPENROUTER_MODEL`：OpenRouter 免费模型名，默认 `deepseek/deepseek-chat-v3-0324:free`。
+- `RAG_LOCAL_LLM_MODEL`：本地 Transformers 模型名，默认 `Qwen/Qwen2.5-1.5B-Instruct`。
+- `RAG_LOCAL_LLM_DEVICE`：`auto`、`cuda`、`cpu`。
+- `RAG_LOCAL_LLM_MAX_NEW_TOKENS`：本地推理最大输出 token 数。
+- `RAG_LOCAL_LLM_TEMPERATURE`：本地推理采样温度。
 - `RAG_OLLAMA_BASE_URL`：Ollama 服务地址。
 - `RAG_OLLAMA_MODEL`：Ollama 模型名。
 
-## Ollama 接入
+## LLM 接入
+
+默认推荐：
+
+- `Gemini`：免费层可用，回答质量通常更好，适合作为默认优先级。
+- `OpenRouter free models`：无需本地显卡，可作为第二优先级。
+- `local_transformers`：无需额外服务进程，适合直接在本机 GPU 上部署小模型。
+- `Ollama`：完全本地免费，适合离线或私有部署。
+
+如果设置 `RAG_GENERATION_PROVIDER=auto`，系统会按 `Gemini -> OpenRouter -> Ollama` 的顺序自动尝试。
+
+### Gemini / OpenRouter
+
+在 `.env` 中配置对应 key 即可启用：
+
+```bash
+RAG_GENERATION_PROVIDER=auto
+RAG_GEMINI_API_KEY=your_gemini_key
+RAG_OPENROUTER_API_KEY=your_openrouter_key
+```
+
+### Ollama
 
 如果本机已安装 Ollama，可以先拉取模型：
 
@@ -134,6 +164,21 @@ ollama serve
 ```
 
 如果没有启用 Ollama，系统仍然可以工作，只是回答会退化成“最相关片段摘要”。
+
+### 本地 Transformers 部署
+
+如果你希望不依赖外部 API，也不额外安装 Ollama，可以直接使用内置的本地 Transformers 推理：
+
+```bash
+RAG_GENERATION_PROVIDER=local_transformers
+RAG_LOCAL_LLM_MODEL=Qwen/Qwen2.5-1.5B-Instruct
+RAG_LOCAL_LLM_DEVICE=auto
+RAG_LOCAL_LLM_MAX_NEW_TOKENS=384
+```
+
+针对 6GB 显存机器，默认推荐 `Qwen/Qwen2.5-1.5B-Instruct`。这个量级通常更稳妥，首轮调用时会自动下载模型权重到本地缓存。像 3B 及以上模型在 6GB 显存上更容易出现显存不足或响应明显变慢。
+
+如果本机是 NVIDIA GPU，`RAG_LOCAL_LLM_DEVICE=auto` 会优先走 CUDA；若未检测到 CUDA，则会退回 CPU，但速度会明显变慢。
 
 ## 测试
 

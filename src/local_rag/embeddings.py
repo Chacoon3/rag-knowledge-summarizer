@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Sequence
 
 import numpy as np
+from sentence_transformers import SentenceTransformer
 
 
 def normalize_vectors(vectors: np.ndarray) -> np.ndarray:
@@ -36,7 +37,5 @@ class EmbeddingBackend:
 
     def get_model(self):
         if self._model is None:
-            from sentence_transformers import SentenceTransformer
-
             self._model = SentenceTransformer(self.model_name)
         return self._model
