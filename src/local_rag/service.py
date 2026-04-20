@@ -28,7 +28,7 @@ from local_rag.models import (
     LlmStatusResponse,
     QueryResponse,
 )
-from local_rag.retriever import HybridSearchConfig, Retriever
+from local_rag.retriever import HybridSearchConfig, RerankConfig, Retriever
 from local_rag.settings import Settings
 from local_rag.store import LocalVectorStore
 
@@ -248,6 +248,13 @@ class RagService:
                 keyword_weight=self.settings.hybrid_keyword_weight,
                 candidate_multiplier=self.settings.hybrid_candidate_multiplier,
             ),
+            rerank_config=RerankConfig(
+                enabled=self.settings.rerank_enabled,
+                base_weight=self.settings.rerank_base_weight,
+                keyword_weight=self.settings.rerank_keyword_weight,
+                phrase_weight=self.settings.rerank_phrase_weight,
+                candidate_multiplier=self.settings.rerank_candidate_multiplier,
+            ),
         )
         matches = retriever.search(question, top_k=top_k or self.settings.top_k)
         if not matches:
@@ -288,6 +295,13 @@ class RagService:
                 vector_weight=self.settings.hybrid_vector_weight,
                 keyword_weight=self.settings.hybrid_keyword_weight,
                 candidate_multiplier=self.settings.hybrid_candidate_multiplier,
+            ),
+            rerank_config=RerankConfig(
+                enabled=self.settings.rerank_enabled,
+                base_weight=self.settings.rerank_base_weight,
+                keyword_weight=self.settings.rerank_keyword_weight,
+                phrase_weight=self.settings.rerank_phrase_weight,
+                candidate_multiplier=self.settings.rerank_candidate_multiplier,
             ),
         )
         matches = await retriever.search_async(question, top_k or self.settings.top_k)

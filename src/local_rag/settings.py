@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     hybrid_vector_weight: float = 0.65
     hybrid_keyword_weight: float = 0.35
     hybrid_candidate_multiplier: int = 4
+    rerank_enabled: bool = True
+    rerank_base_weight: float = 0.55
+    rerank_keyword_weight: float = 0.3
+    rerank_phrase_weight: float = 0.15
+    rerank_candidate_multiplier: int = 3
     enable_generation: bool = True
     generation_provider: str = "auto"
     gemini_api_key: str = ""
